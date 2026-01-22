@@ -1,21 +1,21 @@
-# Base image: Lightweight Python 3.10
+# Base image
 FROM python:3.10-slim
 
-# Set working directory inside the container
 WORKDIR /app
 
-# Copy requirements file first (for caching layers)
 COPY requirements.txt .
 
-# Install dependencies
-# --no-cache-dir keeps the image small
+# --- NEW STEP: Upgrade pip and install 'wheel' first ---
+# This forces the system to look for pre-built binaries instead of compiling from scratch
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install dependencies (now much faster)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
 COPY . .
 
-# Expose the port Streamlit runs on
 EXPOSE 8501
 
-# Healthcheck to ensure the container is running (good for cloud platforms)
-HEALTHCHECK CMD curl --fail http://localhost:8501/_
+HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+
+ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
