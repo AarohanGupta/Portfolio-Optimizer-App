@@ -37,12 +37,18 @@ def calculate_log_returns(stock_prices):
     """
     Calculates log returns from price data.
     """
+    # dropna() removes rows where ANY stock is missing data.
+    # If stocks have no overlapping dates, this becomes empty.
     return np.log(stock_prices / stock_prices.shift(1)).dropna()
 
 def perform_monte_carlo_simulation(log_returns, num_simulations, risk_free_rate=0.0):
     """
     Performs Monte Carlo simulation.
     """
+    # SAFETY CHECK 1: Ensure we have data to simulate
+    if log_returns.empty or len(log_returns) < 2:
+        return pd.DataFrame(), None
+
     num_tickers = len(log_returns.columns)
     
     # Annualized parameters
@@ -58,10 +64,11 @@ def perform_monte_carlo_simulation(log_returns, num_simulations, risk_free_rate=
     
     # Portfolio Risk
     # Optimized calculation using Einstein summation for speed
-    # (w @ cov @ w.T) for all simulations
     port_risks = np.sqrt(np.einsum('ij,jk,ik->i', all_weights, cov_matrix, all_weights))
     
-    sharpe_ratios = (port_returns - risk_free_rate) / port_risks
+    # Calculate Sharpe Ratio (Handle division by zero gracefully)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        sharpe_ratios = (port_returns - risk_free_rate) / port_risks
     
     # Create results DataFrame
     sim_data = {
@@ -75,6 +82,12 @@ def perform_monte_carlo_simulation(log_returns, num_simulations, risk_free_rate=
         sim_data[ticker] = all_weights[:, idx]
         
     results_df = pd.DataFrame(sim_data)
+    
+    # SAFETY CHECK 2: Drop results that turned out NaN (e.g. 0 volatility)
+    results_df = results_df.dropna()
+
+    if results_df.empty:
+        return pd.DataFrame(), None
     
     max_sharpe_idx = results_df['Sharpe Ratio'].idxmax()
     optimal_portfolio = results_df.loc[max_sharpe_idx]
