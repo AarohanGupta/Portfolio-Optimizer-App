@@ -40,75 +40,84 @@ if run_btn:
         st.error("⚠️ Please enter at least 2 distinct tickers to form a portfolio.")
     else:
         with st.spinner("Fetching global market data..."):
-            # 1. Fetch Data (with error handling)
+            # 1. Fetch Data
             stock_prices, failed_tickers = utils.fetch_stock_data(raw_tickers, start_date, end_date)
             
             # 2. Handle Failed Tickers
             if failed_tickers:
                 st.warning(f"⚠️ Could not find data for: {', '.join(failed_tickers)}. Check spelling or delisted status.")
             
-            # 3. Check if we have enough valid data remaining
+            # 3. Check if we have enough valid data
             if stock_prices.empty or stock_prices.shape[1] < 2:
                 st.error("❌ Not enough valid stocks found to proceed. Please check your tickers.")
             else:
-                st.success(f"✅ Successfully loaded data for {len(stock_prices.columns)} assets.")
-                
                 # 4. Processing
                 log_returns = utils.calculate_log_returns(stock_prices)
-                sim_results, optimal_port = utils.perform_monte_carlo_simulation(log_returns, num_simulations)
                 
-                # 5. Visualizations
-                st.subheader("🏆 Optimal Portfolio Allocation")
-                
-                # Metrics Row
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Expected Return", f"{optimal_port['Return']:.2%}")
-                c2.metric("Risk (Volatility)", f"{optimal_port['Risk']:.2%}")
-                c3.metric("Sharpe Ratio", f"{optimal_port['Sharpe Ratio']:.2f}")
-                
-                st.divider()
-                
-                col_chart, col_weights = st.columns([2, 1])
-                
-                # Efficient Frontier Plot
-                with col_chart:
-                    st.subheader("Efficient Frontier")
-                    fig = px.scatter(
-                        sim_results, x="Risk", y="Return", color="Sharpe Ratio",
-                        color_continuous_scale="Viridis",
-                        title="Monte Carlo Simulation",
-                        hover_data=stock_prices.columns
-                    )
-                    # Add optimal point
-                    fig.add_scatter(
-                        x=[optimal_port['Risk']], y=[optimal_port['Return']],
-                        mode='markers', marker=dict(size=15, color='red', symbol='star'),
-                        name='Max Sharpe'
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                # Weights Table & Pie Chart
-                with col_weights:
-                    st.subheader("Weights")
-                    # Clean weights data
-                    assets = stock_prices.columns
-                    weights = optimal_port[assets]
+                # SAFETY CHECK: Overlapping Dates
+                if log_returns.empty:
+                    st.error("❌ The selected stocks have NO overlapping trading days. Please choose stocks that traded during the same time period.")
+                else:
+                    sim_results, optimal_port = utils.perform_monte_carlo_simulation(log_returns, num_simulations)
                     
-                    # Filter out tiny weights (< 1%) for cleaner view
-                    weights_df = pd.DataFrame({'Asset': assets, 'Weight': weights})
-                    weights_df = weights_df[weights_df['Weight'] > 0.001].sort_values(by='Weight', ascending=False)
-                    
-                    # Display Table
-                    st.dataframe(
-                        weights_df.style.format({"Weight": "{:.2%}"}), 
-                        use_container_width=True, 
-                        hide_index=True
-                    )
-                    
-                    # Pie Chart
-                    fig_pie = px.pie(weights_df, values='Weight', names='Asset', hole=0.4)
-                    fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0))
-                    st.plotly_chart(fig_pie, use_container_width=True)
+                    # SAFETY CHECK: Calculation Success
+                    if optimal_port is None:
+                         st.error("❌ Optimization failed. This implies extremely insufficient data or zero volatility.")
+                    else:
+                        st.success(f"✅ Optimized using {len(log_returns)} overlapping data points.")
+                        
+                        # 5. Visualizations
+                        st.subheader("🏆 Optimal Portfolio Allocation")
+                        
+                        # Metrics Row
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Expected Return", f"{optimal_port['Return']:.2%}")
+                        c2.metric("Risk (Volatility)", f"{optimal_port['Risk']:.2%}")
+                        c3.metric("Sharpe Ratio", f"{optimal_port['Sharpe Ratio']:.2f}")
+                        
+                        st.divider()
+                        
+                        col_chart, col_weights = st.columns([2, 1])
+                        
+                        # Efficient Frontier Plot
+                        with col_chart:
+                            st.subheader("Efficient Frontier")
+                            fig = px.scatter(
+                                sim_results, x="Risk", y="Return", color="Sharpe Ratio",
+                                color_continuous_scale="Viridis",
+                                title="Monte Carlo Simulation",
+                                hover_data=stock_prices.columns
+                            )
+                            # Add optimal point
+                            fig.add_scatter(
+                                x=[optimal_port['Risk']], y=[optimal_port['Return']],
+                                mode='markers', marker=dict(size=15, color='red', symbol='star'),
+                                name='Max Sharpe'
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Weights Table & Pie Chart
+                        with col_weights:
+                            st.subheader("Weights")
+                            # Clean weights data
+                            assets = stock_prices.columns
+                            weights = optimal_port[assets]
+                            
+                            # Filter out tiny weights (< 1%) for cleaner view
+                            weights_df = pd.DataFrame({'Asset': assets, 'Weight': weights})
+                            weights_df = weights_df[weights_df['Weight'] > 0.001].sort_values(by='Weight', ascending=False)
+                            
+                            # Display Table
+                            st.dataframe(
+                                weights_df.style.format({"Weight": "{:.2%}"}), 
+                                use_container_width=True, 
+                                hide_index=True
+                            )
+                            
+                            # Pie Chart
+                            fig_pie = px.pie(weights_df, values='Weight', names='Asset', hole=0.4)
+                            fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0))
+                            st.plotly_chart(fig_pie, use_container_width=True)
 
 elif not run_btn:
     st.info("👈 Enter tickers in the sidebar and click Run.")
